@@ -232,7 +232,7 @@ public class TestTodoServer {
 
     private static void setupDB() {
         SQLiteDataSource dataSource = new SQLiteDataSource();
-        dataSource.setUrl("jdbc:sqlite:todo.db");
+        dataSource.setUrl("jdbc:sqlite:game.db");
 
          db = new Sql2o(dataSource);
 
@@ -243,7 +243,7 @@ public class TestTodoServer {
     }
     private  void clearDB() {
         SQLiteDataSource dataSource = new SQLiteDataSource();
-        dataSource.setUrl("jdbc:sqlite:todo.db");
+        dataSource.setUrl("jdbc:sqlite:game.db");
 
         try (Connection conn = db.open()) {
             String sql = "DROP TABLE IF EXISTS item" ;

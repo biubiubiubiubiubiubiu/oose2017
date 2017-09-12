@@ -6,6 +6,7 @@
 package com.oose2017.rshen3.hareandhounds;
 
 import com.google.gson.Gson;
+import com.oose2017.rshen3.model.PlayerInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sql2o.Connection;
@@ -15,11 +16,11 @@ import org.sql2o.Sql2oException;
 import javax.sql.DataSource;
 import java.util.List;
 
-public class TodoService {
+public class GameService {
 
     private Sql2o db;
 
-    private final Logger logger = LoggerFactory.getLogger(TodoService.class);
+    private final Logger logger = LoggerFactory.getLogger(GameService.class);
 
     /**
      * Construct the model with a pre-defined datasource. The current implementation
@@ -27,15 +28,17 @@ public class TodoService {
      *
      * @param dataSource
      */
-    public TodoService(DataSource dataSource) throws TodoServiceException {
+    public GameService(DataSource dataSource) throws TodoServiceException {
         db = new Sql2o(dataSource);
 
         //Create the schema for the database if necessary. This allows this
         //program to mostly self-contained. But this is not always what you want;
         //sometimes you want to create the schema externally via a script.
         try (Connection conn = db.open()) {
-            String sql = "CREATE TABLE IF NOT EXISTS item (item_id INTEGER PRIMARY KEY AUTOINCREMENT, " +
-                         "                                 title TEXT, done BOOLEAN, created_on TIMESTAMP)" ;
+            String sql = "CREATE TABLE IF NOT EXISTS `HandHtable` ( `gameID` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
+                                                     "`playerId` TEXT NOT NULL, " +
+                                                     "`pieceType` TEXT NOT NULL )";
+
             conn.createQuery(sql).executeUpdate();
         } catch(Sql2oException ex) {
             logger.error("Failed to create schema at startup", ex);
@@ -43,6 +46,31 @@ public class TodoService {
         }
     }
 
+    /**
+     * Create a new game for the input piece type
+     *
+     * @return the gameID, playerID, pieceType
+     */
+    public PlayerInfo createGame(String body) throws TodoServiceException {
+        PlayerInfo playerInfo = new Gson().fromJson(body, PlayerInfo.class);
+        playerInfo.setPlayerId(playerInfo.getPieceType() + "_player");
+        // Insert the new game info into the database
+        String sql = "INSERT INTO HandHTable (`playerId`, `pieceType`) " +
+                                    "VALUES (:playerId, :pieceType)";
+        String fetch_sql = "SELECT last_insert_rowid()";
+        try (Connection conn = db.open()) {
+            conn.createQuery(sql)
+                    .bind(playerInfo)
+                    .executeUpdate();
+            // get the last inserted record back
+            int id = conn.createQuery(fetch_sql).executeAndFetchFirst(Integer.class);
+            playerInfo.setGameID(id);
+            return playerInfo;
+        } catch(Sql2oException ex) {
+            logger.error("GameService.createGame: Failed to query database to create the new game", ex);
+            throw new TodoServiceException("GameService.createGame: Failed to query database to create the new game", ex);
+        }
+    }
     /**
      * Fetch all todo entries in the list
      *
@@ -57,8 +85,8 @@ public class TodoService {
                 .executeAndFetch(Todo.class);
             return todos;
         } catch(Sql2oException ex) {
-            logger.error("TodoService.findAll: Failed to query database", ex);
-            throw new TodoServiceException("TodoService.findAll: Failed to query database", ex);
+            logger.error("GameService.findAll: Failed to query database", ex);
+            throw new TodoServiceException("GameService.findAll: Failed to query database", ex);
         }
     }
 
@@ -76,8 +104,8 @@ public class TodoService {
                 .bind(todo)
                 .executeUpdate();
         } catch(Sql2oException ex) {
-            logger.error("TodoService.createNewTodo: Failed to create new entry", ex);
-            throw new TodoServiceException("TodoService.createNewTodo: Failed to create new entry", ex);
+            logger.error("GameService.createNewTodo: Failed to create new entry", ex);
+            throw new TodoServiceException("GameService.createNewTodo: Failed to create new entry", ex);
         }
     }
 
@@ -97,8 +125,8 @@ public class TodoService {
                 .addColumnMapping("created_on", "createdOn")
                 .executeAndFetchFirst(Todo.class);
         } catch(Sql2oException ex) {
-            logger.error(String.format("TodoService.find: Failed to query database for id: %s", id), ex);
-            throw new TodoServiceException(String.format("TodoService.find: Failed to query database for id: %s", id), ex);
+            logger.error(String.format("GameService.find: Failed to query database for id: %s", id), ex);
+            throw new TodoServiceException(String.format("GameService.find: Failed to query database for id: %s", id), ex);
         }
     }
 
@@ -118,12 +146,12 @@ public class TodoService {
 
             //Verify that we did indeed update something
             if (getChangedRows(conn) != 1) {
-                logger.error(String.format("TodoService.update: Update operation did not update rows. Incorrect id(?): %s", todoId));
-                throw new TodoServiceException(String.format("TodoService.update: Update operation did not update rows. Incorrect id (?): %s", todoId), null);
+                logger.error(String.format("GameService.update: Update operation did not update rows. Incorrect id(?): %s", todoId));
+                throw new TodoServiceException(String.format("GameService.update: Update operation did not update rows. Incorrect id (?): %s", todoId), null);
             }
         } catch(Sql2oException ex) {
-            logger.error(String.format("TodoService.update: Failed to update database for id: %s", todoId), ex);
-            throw new TodoServiceException(String.format("TodoService.update: Failed to update database for id: %s", todoId), ex);
+            logger.error(String.format("GameService.update: Failed to update database for id: %s", todoId), ex);
+            throw new TodoServiceException(String.format("GameService.update: Failed to update database for id: %s", todoId), ex);
         }
 
         return find(todoId);
@@ -142,12 +170,12 @@ public class TodoService {
 
             //Verify that we did indeed change something
             if (getChangedRows(conn) != 1) {
-                logger.error(String.format("TodoService.delete: Delete operation did not delete rows. Incorrect id(?): %s", todoId));
-                throw new TodoServiceException(String.format("TodoService.delete: Delete operation did not delete rows. Incorrect id(?): %s", todoId), null);
+                logger.error(String.format("GameService.delete: Delete operation did not delete rows. Incorrect id(?): %s", todoId));
+                throw new TodoServiceException(String.format("GameService.delete: Delete operation did not delete rows. Incorrect id(?): %s", todoId), null);
             }
         } catch(Sql2oException ex) {
-            logger.error(String.format("TodoService.update: Failed to delete id: %s", todoId), ex);
-            throw new TodoServiceException(String.format("TodoService.update: Failed to delete id: %s", todoId), ex);
+            logger.error(String.format("GameService.update: Failed to delete id: %s", todoId), ex);
+            throw new TodoServiceException(String.format("GameService.update: Failed to delete id: %s", todoId), ex);
         }
     }
 
