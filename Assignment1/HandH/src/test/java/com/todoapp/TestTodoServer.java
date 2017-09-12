@@ -2,8 +2,8 @@ package com.todoapp;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import org.hamcrest.CustomTypeSafeMatcher;
-import org.hamcrest.Description;
+import com.oose2017.rshen3.hareandhounds.Bootstrap;
+import com.oose2017.rshen3.hareandhounds.Todo;
 import org.sql2o.Connection;
 import org.sql2o.Sql2o;
 import org.sqlite.SQLiteDataSource;
