@@ -44,7 +44,7 @@ public class Bootstrap {
         try {
             GameService model = new GameService(dataSource);
             new GameController(model);
-        } catch (GameService.TodoServiceException ex) {
+        } catch (GameService.GameServiceException ex) {
             logger.error("Failed to create a GameService instance. Aborting");
         }
     }

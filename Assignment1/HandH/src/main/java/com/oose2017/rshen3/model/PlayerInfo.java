@@ -4,16 +4,16 @@ package com.oose2017.rshen3.model;
  * Created by ASUS on 2017/9/12.
  */
 public class PlayerInfo {
-    private int gameID;
+    private String gameId;
     private String playerId;
     private String pieceType;
 
-    public int getGameID() {
-        return gameID;
+    public String getGameId() {
+        return gameId;
     }
 
-    public void setGameID(int gameID) {
-        this.gameID = gameID;
+    public void setGameId(String gameId) {
+        this.gameId = gameId;
     }
 
     public String getPlayerId() {

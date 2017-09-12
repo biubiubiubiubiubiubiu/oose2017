@@ -4,17 +4,21 @@
 //-------------------------------------------------------------------------------------------------------------//
 
 package com.oose2017.rshen3.hareandhounds;
-
+import com.fasterxml.uuid.Generators;
 import com.google.gson.Gson;
+import com.oose2017.rshen3.model.PieceInfo;
 import com.oose2017.rshen3.model.PlayerInfo;
+import com.oose2017.rshen3.utils.BoardHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sql2o.Connection;
+import org.sql2o.Query;
 import org.sql2o.Sql2o;
 import org.sql2o.Sql2oException;
 
 import javax.sql.DataSource;
 import java.util.List;
+import java.util.UUID;
 
 public class GameService {
 
@@ -28,163 +32,130 @@ public class GameService {
      *
      * @param dataSource
      */
-    public GameService(DataSource dataSource) throws TodoServiceException {
+    public GameService(DataSource dataSource) throws GameServiceException {
         db = new Sql2o(dataSource);
 
         //Create the schema for the database if necessary. This allows this
         //program to mostly self-contained. But this is not always what you want;
         //sometimes you want to create the schema externally via a script.
         try (Connection conn = db.open()) {
-            String sql = "CREATE TABLE IF NOT EXISTS `HandHtable` ( `gameID` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
+            String sqlCreatePlayerInfos = "CREATE TABLE IF NOT EXISTS `PlayerInfos` ( `gameId` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
                                                      "`playerId` TEXT NOT NULL, " +
                                                      "`pieceType` TEXT NOT NULL )";
 
-            conn.createQuery(sql).executeUpdate();
+            String sqlCreatePieceInfo = "CREATE TABLE IF NOT EXISTS `PieceInfos` ( `gameId` TEXT NOT NULL, " +
+                                                "`pieceType` TEXT NOT NULL, " +
+                                                "`x` INTEGER NOT NULL, `y` INTEGER NOT NULL )";
+            String sqlCreateGameStatus = "CREATE TABLE IF NOT EXISTS `GameStatus` ( `gameId` TEXT NOT NULL, " +
+                                                "`status` TEXT NOT NULL )";
+
+            conn.createQuery(sqlCreatePlayerInfos).executeUpdate();
+            conn.createQuery(sqlCreatePieceInfo).executeUpdate();
+            conn.createQuery(sqlCreateGameStatus).executeUpdate();
         } catch(Sql2oException ex) {
             logger.error("Failed to create schema at startup", ex);
-            throw new TodoServiceException("Failed to create schema at startup", ex);
+            throw new GameServiceException("Failed to create schema at startup", ex);
         }
     }
 
     /**
      * Create a new game for the input piece type
      *
-     * @return the gameID, playerID, pieceType
+     * @return the gameId, playerId, pieceType
      */
-    public PlayerInfo createGame(String body) throws TodoServiceException {
+    public PlayerInfo createGame(String body) throws GameServiceException {
+        UUID uuid = Generators.timeBasedGenerator().generate();
         PlayerInfo playerInfo = new Gson().fromJson(body, PlayerInfo.class);
         playerInfo.setPlayerId(playerInfo.getPieceType() + "_player");
+        playerInfo.setGameId(uuid.toString());
         // Insert the new game info into the database
-        String sql = "INSERT INTO HandHTable (`playerId`, `pieceType`) " +
-                                    "VALUES (:playerId, :pieceType)";
-        String fetch_sql = "SELECT last_insert_rowid()";
+        String sqlCreateNewGame = "INSERT INTO PlayerInfos (`gameId`, `playerId`, `pieceType`) " +
+                                    "VALUES (:gameId, :playerId, :pieceType)";
+        String sqlCreatePieces = "INSERT INTO PieceInfos (`gameId`, `pieceType`, `x`, `y`) " +
+                                    "VALUES (:gameId, :pieceType, :x, :y)";
+        String sqlCreateGameStatus = "INSERT INTO GameStatus (`gameId`, `status`) " +
+                                    "VALUES (:gameId, :status)";
+
         try (Connection conn = db.open()) {
-            conn.createQuery(sql)
+            conn.createQuery(sqlCreateNewGame)
                     .bind(playerInfo)
                     .executeUpdate();
-            // get the last inserted record back
-            int id = conn.createQuery(fetch_sql).executeAndFetchFirst(Integer.class);
-            playerInfo.setGameID(id);
+            // Initialize the game status
+            conn.createQuery(sqlCreateGameStatus)
+                    .addParameter("gameId", uuid.toString())
+                    .addParameter("status", "WAITING_FOR_SECOND_PLAYER")
+                    .executeUpdate();
+            // Initialize the piece location in the board
+            List<PieceInfo> pieceInfos = BoardHelper.generatePieces(uuid.toString());
+            for (PieceInfo pieceInfo: pieceInfos) {
+                conn.createQuery(sqlCreatePieces)
+                        .bind(pieceInfo)
+                        .executeUpdate();
+            }
             return playerInfo;
         } catch(Sql2oException ex) {
             logger.error("GameService.createGame: Failed to query database to create the new game", ex);
-            throw new TodoServiceException("GameService.createGame: Failed to query database to create the new game", ex);
+            throw new GameServiceException("GameService.createGame: Failed to query database to create the new game", ex);
         }
     }
+
     /**
-     * Fetch all todo entries in the list
+     * Join the game with specific ID
      *
-     * @return List of all Todo entries
+     * @return the gameId, playerId, pieceType
      */
-    public List<Todo> findAll() throws TodoServiceException {
-        String sql = "SELECT * FROM item" ;
+    public PlayerInfo joinGame(String gameId) throws FullPlayersException, WrongGameIDException, GameServiceException {
+        PlayerInfo newPlayer = new PlayerInfo();
+        newPlayer.setGameId(gameId);
+        String sqlFetch = "SELECT * FROM PlayerInfos WHERE gameId = :gameId";
+        String sqlInsert = "INSERT INTO PlayerInfos (`gameId`, `playerId`, `pieceType`) " +
+                                "VALUES (:gameId, :playerId, :pieceType)";
         try (Connection conn = db.open()) {
-            List<Todo> todos =  conn.createQuery(sql)
-                .addColumnMapping("item_id", "id")
-                .addColumnMapping("created_on", "createdOn")
-                .executeAndFetch(Todo.class);
-            return todos;
-        } catch(Sql2oException ex) {
-            logger.error("GameService.findAll: Failed to query database", ex);
-            throw new TodoServiceException("GameService.findAll: Failed to query database", ex);
-        }
-    }
-
-    /**
-     * Create a new Todo entry.
-     */
-    public void createNewTodo(String body) throws TodoServiceException {
-        Todo todo = new Gson().fromJson(body, Todo.class);
-
-        String sql = "INSERT INTO item (title, done, created_on) " +
-                     "             VALUES (:title, :done, :createdOn)" ;
-
-        try (Connection conn = db.open()) {
-            conn.createQuery(sql)
-                .bind(todo)
-                .executeUpdate();
-        } catch(Sql2oException ex) {
-            logger.error("GameService.createNewTodo: Failed to create new entry", ex);
-            throw new TodoServiceException("GameService.createNewTodo: Failed to create new entry", ex);
-        }
-    }
-
-    /**
-     * Find a todo entry given an Id.
-     *
-     * @param id The id for the Todo entry
-     * @return The Todo corresponding to the id if one is found, otherwise null
-     */
-    public Todo find(String id) throws TodoServiceException {
-        String sql = "SELECT * FROM item WHERE item_id = :itemId ";
-
-        try (Connection conn = db.open()) {
-            return conn.createQuery(sql)
-                .addParameter("itemId", Integer.parseInt(id))
-                .addColumnMapping("item_id", "id")
-                .addColumnMapping("created_on", "createdOn")
-                .executeAndFetchFirst(Todo.class);
-        } catch(Sql2oException ex) {
-            logger.error(String.format("GameService.find: Failed to query database for id: %s", id), ex);
-            throw new TodoServiceException(String.format("GameService.find: Failed to query database for id: %s", id), ex);
-        }
-    }
-
-    /**
-     * Update the specified Todo entry with new information
-     */
-    public Todo update(String todoId, String body) throws TodoServiceException {
-        Todo todo = new Gson().fromJson(body, Todo.class);
-
-        String sql = "UPDATE item SET title = :title, done = :done, created_on = :createdOn WHERE item_id = :itemId ";
-        try (Connection conn = db.open()) {
-            //Update the item
-            conn.createQuery(sql)
-                    .bind(todo)  // one-liner to map all Todo object fields to query parameters :title etc
-                    .addParameter("itemId", Integer.parseInt(todoId))
-                    .executeUpdate();
-
-            //Verify that we did indeed update something
-            if (getChangedRows(conn) != 1) {
-                logger.error(String.format("GameService.update: Update operation did not update rows. Incorrect id(?): %s", todoId));
-                throw new TodoServiceException(String.format("GameService.update: Update operation did not update rows. Incorrect id (?): %s", todoId), null);
+            // Validate the join game requese
+            List<PlayerInfo> playerInfos = conn.createQuery(sqlFetch)
+                                                .bind(newPlayer)
+                                                .executeAndFetch(PlayerInfo.class);
+            if (playerInfos.size() == 0) {
+                // No such game ID before
+                throw new WrongGameIDException("GameService.joinGame: the game ID does not exist!");
             }
-        } catch(Sql2oException ex) {
-            logger.error(String.format("GameService.update: Failed to update database for id: %s", todoId), ex);
-            throw new TodoServiceException(String.format("GameService.update: Failed to update database for id: %s", todoId), ex);
-        }
-
-        return find(todoId);
-    }
-
-    /**
-     * Delete the entry with the specified id
-     */
-    public void delete(String todoId) throws TodoServiceException {
-        String sql = "DELETE FROM item WHERE item_id = :itemId" ;
-        try (Connection conn = db.open()) {
-            //Delete the item
-            conn.createQuery(sql)
-                .addParameter("itemId", Integer.parseInt(todoId))
-                .executeUpdate();
-
-            //Verify that we did indeed change something
-            if (getChangedRows(conn) != 1) {
-                logger.error(String.format("GameService.delete: Delete operation did not delete rows. Incorrect id(?): %s", todoId));
-                throw new TodoServiceException(String.format("GameService.delete: Delete operation did not delete rows. Incorrect id(?): %s", todoId), null);
+            if (playerInfos.size() == 2) {
+                // Two players already
+                throw new FullPlayersException("GameService.joinGame: Already two players exist!");
             }
-        } catch(Sql2oException ex) {
-            logger.error(String.format("GameService.update: Failed to delete id: %s", todoId), ex);
-            throw new TodoServiceException(String.format("GameService.update: Failed to delete id: %s", todoId), ex);
+            if (playerInfos.size() == 1) {
+                if (playerInfos.get(0).getPieceType().equals("HOUND")) {
+                    newPlayer.setPlayerId("HARE_player");
+                    newPlayer.setPieceType("HARE");
+                } else {
+                    newPlayer.setPlayerId("HOUND_player");
+                    newPlayer.setPieceType("HOUND");
+                }
+                // Insert the joined player into database
+                conn.createQuery(sqlInsert)
+                        .bind(newPlayer)
+                        .executeUpdate();
+                // Update the status of the game
+                String sqlUpdateStatus = "UPDATE GameStatus SET status = :status WHERE gameId = :gameId";
+                conn.createQuery(sqlUpdateStatus)
+                        .addParameter("status", "TURN_HOUND")
+                        .addParameter("gameId", gameId)
+                        .executeUpdate();
+            }
+            return newPlayer;
+        } catch (Sql2oException ex) {
+            logger.error("GameService.joinGame: Failed to query database to join the game", ex);
+            throw new GameServiceException("GameService.joinGame: Failed to query database to join the game", ex);
         }
     }
+
 
     //-----------------------------------------------------------------------------//
     // Helper Classes and Methods
     //-----------------------------------------------------------------------------//
 
-    public static class TodoServiceException extends Exception {
-        public TodoServiceException(String message, Throwable cause) {
+    public static class GameServiceException extends Exception {
+        public GameServiceException(String message, Throwable cause) {
             super(message, cause);
         }
     }
@@ -196,5 +167,16 @@ public class GameService {
      */
     private int getChangedRows(Connection conn) throws Sql2oException {
         return conn.createQuery("SELECT changes()").executeScalar(Integer.class);
+    }
+
+    public static class FullPlayersException extends Exception {
+        public FullPlayersException(String message) {
+            super(message);
+        }
+    }
+    public static class WrongGameIDException extends Exception {
+        public WrongGameIDException(String message) {
+            super(message);
+        }
     }
 }
