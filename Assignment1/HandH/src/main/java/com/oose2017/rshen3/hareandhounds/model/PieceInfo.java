@@ -1,4 +1,4 @@
-package com.oose2017.rshen3.model;
+package com.oose2017.rshen3.hareandhounds.model;
 
 public class PieceInfo {
     private String gameId;
