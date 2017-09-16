@@ -17,6 +17,12 @@ public class PieceInfo {
         this.y = y;
     }
 
+    public PieceInfo(PieceInfo pieceInfo) {
+        this.gameId = pieceInfo.getGameId();
+        this.pieceType = pieceInfo.getPieceType();
+        this.x = pieceInfo.getX();
+        this.y = pieceInfo.getY();
+    }
     public String getGameId() {
         return gameId;
     }

@@ -18,9 +18,7 @@ import org.sql2o.Sql2o;
 import org.sql2o.Sql2oException;
 
 import javax.sql.DataSource;
-import java.util.HashMap;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 public class GameService {
 
@@ -53,10 +51,13 @@ public class GameService {
                                                 "`x` INTEGER NOT NULL, `y` INTEGER NOT NULL )";
             String sqlCreateGameStatus = "CREATE TABLE IF NOT EXISTS `GameStates` ( `gameId` TEXT NOT NULL, " +
                                                 "`state` TEXT NOT NULL )";
+            String sqlCreateGameRecord = "CREATE TABLE IF NOT EXISTS `GameRecord` ( `gameId` TEXT NOT NULL, " +
+                    "`moveRecord` TEXT NOT NULL )";
 
             conn.createQuery(sqlCreatePlayerInfos).executeUpdate();
             conn.createQuery(sqlCreatePieceInfo).executeUpdate();
             conn.createQuery(sqlCreateGameStatus).executeUpdate();
+            conn.createQuery(sqlCreateGameRecord).executeUpdate();
         } catch(Sql2oException ex) {
             logger.error("Failed to create schema at startup", ex);
             throw new GameServiceException("Failed to create schema at startup", ex);
@@ -115,6 +116,9 @@ public class GameService {
         String sqlFetchPlayers = "SELECT * FROM PlayerInfos WHERE gameId = :gameId";
         String sqlInsert = "INSERT INTO PlayerInfos (`gameId`, `playerId`, `pieceType`) " +
                                 "VALUES (:gameId, :playerId, :pieceType)";
+        String sqlFetchPieces = "SELECT * FROM PieceInfos WHERE gameId = :gameId";
+        String sqlInsertPieceStates = "INSERT INTO GameRecord (`gameId`, `moveRecord`) " +
+                                "VALUES (:gameId, :moveRecord)";
         try (Connection conn = db.open()) {
             // Validate the join game requese
             List<PlayerInfo> playerInfos = conn.createQuery(sqlFetchPlayers)
@@ -149,6 +153,15 @@ public class GameService {
                         .addParameter("gameId", gameId)
                         .executeUpdate();
             }
+            // Record the initial piece status
+            List<PieceInfo> pieceInfos = conn.createQuery(sqlFetchPieces)
+                                                .addParameter("gameId", gameId)
+                                                .executeAndFetch(PieceInfo.class);
+            String pieceStates = BoardHelper.getPieceStates(pieceInfos);
+            conn.createQuery(sqlInsertPieceStates)
+                    .addParameter("gameId", gameId)
+                    .addParameter("moveRecord", pieceStates)
+                    .executeUpdate();
             return newPlayer;
         } catch (Sql2oException ex) {
             logger.error("GameService.joinGame: Failed to query database to join the game", ex);
@@ -205,6 +218,11 @@ public class GameService {
         }
         String sqlFetchState = "SELECT state FROM GameStates WHERE gameId = :gameId";
         String sqlFetchPiece = "SELECT * FROM PieceInfos WHERE gameId = :gameId";
+        String sqlFetchPieceStates = "SELECT COUNT(*) FROM GameRecord WHERE gameId = :gameId " +
+                                        "AND moveRecord = :moveRecord";
+        String sqlUpdatePieceStates = "INSERT INTO GameRecord (`gameId`, `moveRecord`) " +
+                                        "VALUES(:gameId, :moveRecord)";
+        String sqlDeletePieceStates = "DELETE FROM GameRecord WHERE `gameId` = :gameId";
         try (Connection conn = db.open()) {
             String state = conn.createQuery(sqlFetchState)
                                 .addParameter("gameId", movePiece.getGameId())
@@ -264,9 +282,23 @@ public class GameService {
                 throw new IllegalMove("GameService.makeMove: Probably the piece cannot reach there");
             }
             // update the game status
+            String judgeResult = "";
             changePiece.setX(movePiece.getToX());
             changePiece.setY(movePiece.getToY());
-            String judgeResult = BoardHelper.judge(pieceInfos, state);
+            String pieceStates = BoardHelper.getPieceStates(pieceInfos);
+            int count = conn.createQuery(sqlFetchPieceStates)
+                                .addParameter("gameId", movePiece.getGameId())
+                                .addParameter("moveRecord", pieceStates)
+                                .executeScalar(Integer.class);
+            if (count == 2) {
+                judgeResult = "WIN_HARE_BY_STALLING";
+            } else {
+                conn.createQuery(sqlUpdatePieceStates)
+                        .addParameter("gameId", movePiece.getGameId())
+                        .addParameter("moveRecord", pieceStates)
+                        .executeUpdate();
+                judgeResult = BoardHelper.judge(pieceInfos, state);
+            }
             String sqlUpdateState = "UPDATE GameStates set state = :state WHERE gameId = :gameId";
             conn.createQuery(sqlUpdateState)
                     .addParameter("state", judgeResult)

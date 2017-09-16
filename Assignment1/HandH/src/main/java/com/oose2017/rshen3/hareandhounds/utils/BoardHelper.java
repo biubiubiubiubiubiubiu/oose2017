@@ -2,10 +2,7 @@ package com.oose2017.rshen3.hareandhounds.utils;
 
 import com.oose2017.rshen3.hareandhounds.model.PieceInfo;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 
 public class BoardHelper {
     private static final int[] HOUNDX = {1, 0, 1};
@@ -104,7 +101,7 @@ public class BoardHelper {
         List<PieceInfo> houndPieces = getHounds(pieceInfos);
         boolean fallBack = true;
         for (PieceInfo houndPiece: houndPieces) {
-            if (houndPiece.getX() <= harePiece.getX()) {
+            if (houndPiece.getX() < harePiece.getX()) {
                 fallBack = false;
                 break;
             }
@@ -133,6 +130,38 @@ public class BoardHelper {
         }
         return null;
     }
+
+    public static String getPieceStates (List<PieceInfo> pieceInfos) {
+        PieceInfo hare = getHare(pieceInfos);
+        List<PieceInfo> hounds = getHounds(pieceInfos);
+        Collections.sort(hounds, new Comparator<PieceInfo>() {
+            @Override
+            public int compare(PieceInfo o1, PieceInfo o2) {
+                if (o1.getX() < o2.getX()) {
+                    return -1;
+                } else if (o1.getX() > o2.getX()) {
+                    return 1;
+                } else {
+                    if (o1.getY() < o2.getY()) {
+                        return -1;
+                    } else if (o1.getY() > o2.getY()) {
+                        return 1;
+                    } else {
+                        return 0;
+                    }
+                }
+            }
+        });
+        StringBuilder sb = new StringBuilder();
+        sb.append("HOUND");
+        for (PieceInfo hound: hounds) {
+            sb.append(hound.getX() + "" + hound.getY());
+        }
+        sb.append("HARE");
+        sb.append(hare.getX() + "" + hare.getY());
+        return sb.toString();
+    }
+
     private static PieceInfo getHare(List<PieceInfo> pieceInfos) {
         for (PieceInfo pieceInfo: pieceInfos) {
             if (pieceInfo.getPieceType().equals("HARE")) {
@@ -142,9 +171,13 @@ public class BoardHelper {
         return null;
     }
     private static List<PieceInfo> getHounds(List<PieceInfo> pieceInfos) {
-        PieceInfo harePiece = getHare(pieceInfos);
-        pieceInfos.remove(harePiece);
-        return pieceInfos;
+        List<PieceInfo> pieceInfoList = new LinkedList<>();
+        for (PieceInfo pieceInfo: pieceInfos) {
+            if (pieceInfo.getPieceType().equals("HOUND")) {
+                pieceInfoList.add(new PieceInfo(pieceInfo));
+            }
+        }
+        return pieceInfoList;
     }
 
     private static boolean validate(int x, int y) {
